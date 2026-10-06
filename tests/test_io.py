@@ -80,7 +80,7 @@ class TestText(unittest.TestCase):
         body = body[::-1]  # orden inverso, como cuando NOVA ordena por otra columna
         cv = read_nova("\n".join([lines[0]] + body).encode(), "cv.txt")
         self.check(cv)
-        self.assertTrue(any("reordenaron" in n for n in cv.notes))
+        self.assertTrue(any(n.code == "note.sorted_by_time" for n in cv.notes))
 
     def test_file_object_and_path(self):
         data = nova_text().encode()

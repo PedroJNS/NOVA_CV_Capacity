@@ -4,6 +4,7 @@ Ejemplos::
 
     python -m cvcap datos_cv.txt --masa-activa 1.6
     python -m cvcap muestra1.txt muestra2.xlsx --masa-disco 6.2 --masa-cu 4.1 --salida resultados.xlsx
+    python -m cvcap datos_cv.txt --masa-activa 2.64 --origin cv_origin.xlsx --idioma en
 """
 from __future__ import annotations
 
@@ -16,14 +17,16 @@ import pandas as pd
 
 from . import __version__
 from .analysis import active_mass_mg, analyze, disc_area_cm2
-from .io import NovaFormatError, read_nova
-from .report import results_to_csv, results_to_excel, summary_table
+from .i18n import CvcapError
+from .peaks import default_windows, window_peaks
+from .io import read_nova
+from .report import item_from_result, origin_workbook, results_to_csv, results_to_excel, summary_table
 
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="cvcap",
-        description="Capacidad, eficiencia coulómbica y retención a partir de CV exportadas de NOVA.",
+        description="Capacidad, eficiencia coulómbica, retención y picos a partir de CV exportadas de NOVA.",
     )
     p.add_argument("archivos", nargs="+", help="archivos .txt/.csv/.dat/.xlsx/.xls exportados de NOVA")
     masa = p.add_argument_group("masa del electrodo")
@@ -39,13 +42,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--velocidad", type=float, help="velocidad de barrido en mV/s (solo si no hay tiempo)")
     p.add_argument("--ventana", type=float, nargs=2, metavar=("EMIN", "EMAX"),
                    help="integrar solo entre EMIN y EMAX (V)")
+    p.add_argument("--idioma", "--lang", choices=["es", "en"], default="es", help="idioma de las tablas (es/en)")
     p.add_argument("--salida", type=Path, help="guardar resultados en .xlsx o .csv")
+    p.add_argument("--origin", type=Path, help="guardar un Excel listo para OriginLab (.xlsx)")
+    p.add_argument("--unidad-corriente", choices=["mA", "uA", "A", "A/g"], default="mA",
+                   help="unidad de corriente en el Excel para Origin (def. mA)")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
+    lang = args.idioma
     if args.masa_activa is not None:
         mass = args.masa_activa
     elif args.masa_disco is not None and args.masa_cu is not None:
@@ -54,44 +62,52 @@ def main(argv: Optional[List[str]] = None) -> int:
         mass = None
     area = disc_area_cm2(args.diametro) if args.diametro else None
 
-    pd.set_option("display.width", 200)
+    pd.set_option("display.width", 220)
     pd.set_option("display.max_columns", 30)
-    results = []
+    results, items = [], []
+    windows = default_windows(lang)
     for path in args.archivos:
         try:
             cv = read_nova(path)
             res = analyze(
-                cv,
-                mass_mg=mass,
-                area_cm2=area,
-                reference_cycle=args.ciclo_ref,
+                cv, mass_mg=mass, area_cm2=area, reference_cycle=args.ciclo_ref,
                 hysteresis=args.histeresis / 1000.0,
                 scan_rate_V_s=args.velocidad / 1000.0 if args.velocidad else None,
-                window=tuple(args.ventana) if args.ventana else None,
-                method=args.metodo,
-                name=Path(path).name,
+                window=tuple(args.ventana) if args.ventana else None, method=args.metodo, name=Path(path).name,
             )
-        except (NovaFormatError, ValueError, OSError) as exc:
+        except CvcapError as exc:
+            print(f"[ERROR] {path}: {exc.localized(lang)}", file=sys.stderr)
+            continue
+        except OSError as exc:
             print(f"[ERROR] {path}: {exc}", file=sys.stderr)
             continue
+        peaks = window_peaks(res, windows)
         results.append(res)
+        items.append(item_from_result(res, peaks=peaks))
         print(f"\n=== {res.name} ===")
-        for note in res.notes:
+        for note in res.notes_text(lang):
             print(f"  · {note}")
-        print(res.cycles.round(4).to_string(index=False))
-        if res.nova_check is not None:
-            print("\nComprobación con Q+/Q− de NOVA:")
-            print(res.nova_check.round(5).to_string(index=False))
+        print(res.cycles_table(lang).round(4).to_string(index=False))
+        if not peaks.empty:
+            print()
+            print(peaks.assign(i_peak_mA=peaks["i_peak"] * 1e3).drop(columns="i_peak").round(4).to_string(index=False))
+        nova = res.nova_table(lang)
+        if nova is not None:
+            print()
+            print(nova.round(5).to_string(index=False))
 
     if not results:
         return 1
     if len(results) > 1:
-        print("\n=== Resumen ===")
-        print(summary_table(results).round(3).to_string(index=False))
+        print()
+        print(summary_table(results, lang).round(3).to_string(index=False))
     if args.salida:
-        data = results_to_csv(results) if args.salida.suffix.lower() == ".csv" else results_to_excel(results)
+        data = results_to_csv(results, lang) if args.salida.suffix.lower() == ".csv" else results_to_excel(results, lang)
         args.salida.write_bytes(data)
-        print(f"\nResultados guardados en {args.salida}")
+        print(f"\n-> {args.salida}")
+    if args.origin:
+        args.origin.write_bytes(origin_workbook(items, lang, args.unidad_corriente))
+        print(f"-> {args.origin}")
     return 0
 
 

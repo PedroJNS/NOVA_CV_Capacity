@@ -29,20 +29,14 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import pandas as pd
 
+from .i18n import CvcapError, Note
+
 TEXT_EXTENSIONS = {".txt", ".csv", ".dat", ".tsv", ".asc", ".ascii"}
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm", ".xls"}
 SUPPORTED_EXTENSIONS = TEXT_EXTENSIONS | EXCEL_EXTENSIONS
 
-#: Papeles que puede tener una columna y etiqueta legible.
-ROLE_LABELS = {
-    "potential": "Potencial",
-    "current": "Corriente",
-    "time": "Tiempo",
-    "scan": "Scan",
-    "index": "Índice",
-    "q_plus": "Q+ (NOVA)",
-    "q_minus": "Q− (NOVA)",
-}
+#: Papeles que puede tener una columna (su etiqueta está en i18n: role.<papel>).
+ROLES = ("potential", "current", "time", "scan", "index", "q_plus", "q_minus")
 
 # Nombres candidatos (normalizados, sin unidades) por orden de preferencia.
 _ROLE_PATTERNS: Dict[str, List[str]] = {
@@ -71,7 +65,7 @@ _UNIT_FACTORS: Dict[str, Dict[str, float]] = {
 }
 
 
-class NovaFormatError(ValueError):
+class NovaFormatError(CvcapError):
     """El archivo no se puede interpretar como datos de una CV."""
 
 
@@ -87,7 +81,7 @@ class CVData:
     q_minus_C: Optional[np.ndarray] = None
     source: str = ""
     columns: Dict[str, str] = field(default_factory=dict)
-    notes: List[str] = field(default_factory=list)
+    notes: List[Note] = field(default_factory=list)
 
     def __len__(self) -> int:
         return len(self.potential_V)
@@ -176,7 +170,7 @@ def _read_source(source) -> tuple:
         except Exception:  # pragma: no cover - no todos los objetos lo permiten
             pass
     else:
-        raise TypeError("Fuente no reconocida: use una ruta, bytes o un archivo abierto.")
+        raise NovaFormatError("err.source_type")
     name = getattr(source, "name", "") or ""
     if isinstance(data, str):
         data = data.encode("utf-8")
@@ -244,9 +238,7 @@ def _find_header(lines: List[str], delim: Optional[str]) -> tuple:
             nxt = _split(lines[nonempty[pos + 1]], delim)
             if len(nxt) >= 2 and _numeric_fraction(nxt) >= 0.5:
                 return i, nonempty[pos + 1]
-    raise NovaFormatError(
-        "No se encontraron columnas numéricas. Exporte los datos desde NOVA como ASCII o Excel."
-    )
+    raise NovaFormatError("err.no_columns_found")
 
 
 def _unique_names(names: List[str]) -> List[str]:
@@ -284,7 +276,7 @@ def _finalize(df: pd.DataFrame, decimal: str = ".") -> pd.DataFrame:
     result = pd.DataFrame(out)
     numeric_cols = [c for c in result.columns if pd.api.types.is_numeric_dtype(result[c])]
     if not numeric_cols:
-        raise NovaFormatError("El archivo no contiene columnas numéricas.")
+        raise NovaFormatError("err.no_numeric")
     result = result.dropna(subset=numeric_cols, how="all").reset_index(drop=True)
     return result
 
@@ -293,7 +285,7 @@ def _parse_text(text: str) -> pd.DataFrame:
     lines = [line.rstrip("\r") for line in text.splitlines()]
     nonempty = [line for line in lines if line.strip()]
     if not nonempty:
-        raise NovaFormatError("El archivo está vacío.")
+        raise NovaFormatError("err.empty")
     delim = _detect_delimiter(nonempty)
     header_idx, data_idx = _find_header(lines, delim)
 
@@ -351,9 +343,7 @@ def _parse_excel(data: bytes) -> pd.DataFrame:
     try:
         sheets = pd.read_excel(io.BytesIO(data), sheet_name=None, header=None)
     except ImportError as exc:  # pragma: no cover - depende del entorno
-        raise NovaFormatError(
-            "Falta la librería para leer este Excel (instale 'openpyxl' para .xlsx o 'xlrd' para .xls)."
-        ) from exc
+        raise NovaFormatError("err.excel_lib") from exc
     fallback = None
     for _name, raw in sheets.items():
         df = _frame_from_grid(raw)
@@ -365,7 +355,7 @@ def _parse_excel(data: bytes) -> pd.DataFrame:
         if fallback is None:
             fallback = df
     if fallback is None:
-        raise NovaFormatError("Ninguna hoja del Excel contiene datos numéricos.")
+        raise NovaFormatError("err.excel_no_data")
     return fallback
 
 
@@ -378,9 +368,7 @@ def load_table(source, filename: Optional[str] = None) -> pd.DataFrame:
     name = filename or detected_name
     suffix = Path(name).suffix.lower() if name else ""
     if suffix == ".nox":
-        raise NovaFormatError(
-            "Los archivos .nox son el formato interno de NOVA. Exporte los datos como ASCII (.txt) o Excel."
-        )
+        raise NovaFormatError("err.nox")
     is_zip = data[:4] == b"PK\x03\x04"
     is_ole = data[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
     if is_zip or is_ole or suffix in EXCEL_EXTENSIONS:
@@ -395,39 +383,34 @@ def to_cvdata(
 ) -> CVData:
     """Convierte la tabla en :class:`CVData` (unidades SI y orden temporal)."""
     mapping = dict(mapping) if mapping else detect_columns(df)
-    missing = [ROLE_LABELS[r] for r in ("potential", "current") if r not in mapping]
+    missing = [r for r in ("potential", "current") if r not in mapping]
     if missing:
-        raise NovaFormatError(
-            "No se encontró la columna de " + " ni de ".join(missing).lower()
-            + ". Columnas disponibles: " + ", ".join(map(str, df.columns))
-        )
-    notes: List[str] = []
+        raise NovaFormatError("err.missing_columns", roles=missing, available=", ".join(map(str, df.columns)))
+    notes: List[Note] = []
     work = pd.DataFrame(index=df.index)
     for role, col in mapping.items():
         if col not in df.columns:
-            raise NovaFormatError(f"La columna '{col}' no existe en el archivo.")
+            raise NovaFormatError("err.missing_col", col=col)
         values = pd.to_numeric(df[col], errors="coerce").astype(float)
         factor, unit = unit_factor(role, col)
         if unit and role in _UNIT_FACTORS and unit.replace(" ", "") not in _UNIT_FACTORS[role]:
-            notes.append(f"Unidad '{unit}' de la columna '{col}' no reconocida: se asume SI.")
+            notes.append(Note("note.unknown_unit", unit=unit, col=col))
         work[role] = values * factor
 
     required = ["potential", "current"] + (["time"] if "time" in work else [])
     before = len(work)
     work = work.dropna(subset=required)
     if len(work) < before:
-        notes.append(f"Se descartaron {before - len(work)} filas sin datos.")
+        notes.append(Note("note.dropped_rows", n=before - len(work)))
     if len(work) < 10:
-        raise NovaFormatError("Hay muy pocos puntos para analizar una CV.")
+        raise NovaFormatError("err.too_few")
 
     order_key = "time" if "time" in work else ("index" if "index" in work else None)
     if order_key is not None and not work[order_key].is_monotonic_increasing:
         work = work.sort_values(order_key, kind="mergesort")
-        notes.append(
-            f"Las filas no estaban en orden temporal; se reordenaron por {ROLE_LABELS[order_key].lower()}."
-        )
+        notes.append(Note("note.sorted_by_" + order_key))
     if order_key is None:
-        notes.append("Sin columna de tiempo ni de índice: se usa el orden de las filas del archivo.")
+        notes.append(Note("note.no_order_col"))
     work = work.reset_index(drop=True)
 
     def col(role):
