@@ -1,16 +1,16 @@
 # ⚡ CV → Capacidad · Voltametrías cíclicas de NOVA (Metrohm Autolab)
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://TU-APP.streamlit.app)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://novacvcapacity-wu5q2r84turttxshfwshyj.streamlit.app/)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-[![Tests](https://github.com/TU_USUARIO/nova-cv-capacity/actions/workflows/tests.yml/badge.svg)](https://github.com/TU_USUARIO/nova-cv-capacity/actions)
+[![Tests](https://github.com/PedroJNS/nova-cv-capacity/actions/workflows/tests.yml/badge.svg)](https://github.com/PedroJNS/nova-cv-capacity/actions)
 [![Idioma](https://img.shields.io/badge/Idioma-ES%20%7C%20EN-orange)](#-english-summary)
 
 Aplicación web desarrollada en **Streamlit** y librería en **Python** para el análisis automatizado de **voltametrías cíclicas (CV)** exportadas de **Metrohm Autolab NOVA**. Pensada para **ánodos de grafito en semicelda frente a Li**, sirve para cualquier material de intercalación medido por CV.
 
-> 👉 **[Abrir la aplicación](https://TU-APP.streamlit.app)** — sin instalar nada.
+> 👉 **[Abrir la aplicación](https://novacvcapacity-wu5q2r84turttxshfwshyj.streamlit.app/)** — sin instalar nada.
 
-<!-- Sugerencia: añade aquí una captura de la app, por ejemplo: ![Captura](docs/captura.png) -->
+<img width="1675" height="622" alt="image" src="https://github.com/user-attachments/assets/d2beb47e-3d6f-4dd6-bd58-ccb6aca71324" />
 
 ---
 
@@ -111,74 +111,6 @@ Las columnas se reconocen por su nombre (`Potential applied (V)`, `WE(1).Current
 
 ---
 
-## ☁️ Publicarla online (gratis): GitHub + Streamlit Community Cloud
-
-1. Crea un repositorio en GitHub y sube esta carpeta:
-
-   ```bash
-   git init && git add . && git commit -m "cvcap v2"
-   git branch -M main
-   git remote add origin https://github.com/TU_USUARIO/nova-cv-capacity.git
-   git push -u origin main
-   ```
-
-2. Entra en [share.streamlit.io](https://share.streamlit.io) con tu cuenta de GitHub → **Create app** → elige el repositorio, la rama `main` y el archivo `app.py` → **Deploy**.
-3. *(Opcional)* En **Settings → Sharing** hazla privada e invita solo a tu grupo.
-4. Sustituye `https://TU-APP.streamlit.app` en este README por la URL de tu app para que funcione el botón **Open in Streamlit**.
-
----
-
-## 💻 Uso en local
-
-```bash
-python -m venv .venv && source .venv/bin/activate      # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-streamlit run app.py
-```
-
-### ⌨️ Línea de comandos
-
-```bash
-python -m cvcap datos_cv.txt --masa-activa 2.64 --diametro 12 --origin cv_origin.xlsx
-python -m cvcap m1.txt m2.xlsx --masa-disco 6.2 --masa-cu 4.1 --salida resultados.xlsx --idioma en
-```
-
-| Opción | Valores |
-|---|---|
-| `--metodo` | `signo` \| `direccion` |
-| `--ciclo-ref` | número de ciclo (p. ej. `2`) |
-| `--ventana` | límites de potencial (p. ej. `0.01 1.0`) |
-| `--velocidad` | velocidad de barrido en mV/s (p. ej. `0.1`) |
-| `--histeresis` | en mV (p. ej. `20`) |
-| `--unidad-corriente` | `mA` \| `uA` \| `A` \| `A/g` |
-| `--idioma` | `es` \| `en` |
-
-### 🐍 Desde Python
-
-```python
-from cvcap import read_nova, analyze
-from cvcap.peaks import default_windows, window_peaks
-from cvcap.report import item_from_result, origin_workbook
-
-cv = read_nova("datos_cv.txt")
-res = analyze(cv, mass_mg=2.64)
-print(res.cycles_table("es"))
-peaks = window_peaks(res, default_windows("es"))
-open("origin.xlsx", "wb").write(origin_workbook([item_from_result(res, peaks=peaks)], "es"))
-```
-
----
-
-## 🧪 Tests
-
-```bash
-pip install pytest && pytest -q
-```
-
-Cubren la lectura de todos los formatos, el cálculo con CV de carga conocida, los picos, los colores, la base de datos (guardar, editar, borrar, copia de seguridad y restauración), el Excel para Origin y que todos los textos existan en los dos idiomas. **GitHub Actions** los ejecuta en cada push.
-
----
-
 ## 🗂️ Estructura del proyecto
 
 ```
@@ -227,6 +159,6 @@ Esta aplicación es software libre y se distribuye bajo los términos de la **Li
 - 📊 OriginLab-ready Excel (3 header rows: Long Name / Units / Comments; E/I column pairs per cycle).
 - 🌐 Full Spanish/English toggle.
 
-👉 **[Open the app](https://TU-APP.streamlit.app)**, or deploy your own copy for free on Streamlit Community Cloud by pointing it at `app.py`. Note that the Community Cloud disk is wiped on restart: download database backups regularly, or run locally for a persistent database.
+👉 **[Open the app](https://novacvcapacity-wu5q2r84turttxshfwshyj.streamlit.app/)**, or deploy your own copy for free on Streamlit Community Cloud by pointing it at `app.py`. Note that the Community Cloud disk is wiped on restart: download database backups regularly, or run locally for a persistent database.
 
 Developed by **Pedro J. Navarrete Segado**. Licensed under **GPL-3.0**.
