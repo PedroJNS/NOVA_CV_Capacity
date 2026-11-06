@@ -438,6 +438,167 @@ _add("doc.method", """
    current, shift vs the reference cycle and ΔEp between two peaks are given.
 """)
 
+# --------------------------------------------------------------------------
+# Referencia teórica, parámetros redox y carga por ventana
+# --------------------------------------------------------------------------
+_add("err.molar_mass", "La masa molar debe ser mayor que 0.", "The molar mass must be greater than 0.")
+_add("err.mass_molar", "Hacen falta la masa activa y la masa molar (mayores que 0).",
+     "Active mass and molar mass (both greater than 0) are required.")
+_add("err.mass_needed", "Hace falta la masa activa (mayor que 0).", "The active mass (greater than 0) is required.")
+_add("err.rs_inputs", "Para estimar D indique n, el área y la concentración (todos mayores que 0).",
+     "To estimate D enter n, the area and the concentration (all greater than 0).")
+_add("err.dunn_rates", "La separación de Dunn necesita barridos de al menos dos velocidades distintas.",
+     "The Dunn separation needs sweeps at two or more different scan rates.")
+_add("err.dunn_range", "Los barridos no comparten ningún intervalo de potencial.",
+     "The sweeps share no common potential range.")
+
+_add("tab.theory", "Teórica y e⁻", "Theory and e⁻")
+_add("sb.theory", "Referencia teórica", "Theoretical reference")
+_add("th.material", "Material de referencia", "Reference material")
+_add("th.mat.graphite", "Grafito (C6 → LiC6)", "Graphite (C6 → LiC6)")
+_add("th.mat.ptcda", "PTCDA", "PTCDA")
+_add("th.mat.custom", "Otro (indicar)", "Other (enter values)")
+_add("th.molar", "Masa molar (g/mol)", "Molar mass (g/mol)")
+_add("th.n_e", "Electrones (Li) por fórmula", "Electrons (Li) per formula unit")
+_add("th.theo_is", "Capacidad teórica: **{value} mAh/g**", "Theoretical capacity: **{value} mAh/g**")
+_add("th.add_mass", "Masa de aditivo conductor (mg)", "Conductive additive mass (mg)")
+_add("th.add_cap", "Capacidad del blanco (mAh/g de aditivo)", "Blank capacity (mAh/g of additive)")
+_add("help.blank", "Mide un electrodo sin material activo (solo aditivo y binder) y apunta su capacidad por g de "
+     "aditivo. Su aporte se resta de las cargas antes de dividir por la masa activa. Con 0 no se corrige nada.",
+     "Measure an electrode without active material (additive and binder only) and enter its capacity per g of "
+     "additive. Its contribution is subtracted from the charges before dividing by the active mass. 0 = no correction.")
+_add("th.need_mass", "Indique la masa activa de este archivo para calcular la referencia teórica.",
+     "Enter this file's active mass to calculate the theoretical reference.")
+_add("th.title", "Capacidad respecto a la teórica y electrones intercambiados",
+     "Capacity versus theoretical and electrons exchanged")
+_add("th.metric", "Capacidad teórica", "Theoretical capacity")
+_add("th.plot", "Porcentaje de la capacidad teórica", "Percentage of theoretical capacity")
+for _k, _es, _en in [
+    ("cycle", "Ciclo", "Cycle"),
+    ("cap_lit", "Cap. litiación corregida (mAh/g)", "Corrected lithiation cap. (mAh/g)"),
+    ("cap_delit", "Cap. delitiación corregida (mAh/g)", "Corrected delithiation cap. (mAh/g)"),
+    ("x_lit", "x litiación (e⁻/fórmula)", "x lithiation (e⁻/formula unit)"),
+    ("x_delit", "x delitiación (e⁻/fórmula)", "x delithiation (e⁻/formula unit)"),
+    ("pct_lit", "% de la teórica (litiación)", "% of theoretical (lithiation)"),
+    ("pct_delit", "% de la teórica (delitiación)", "% of theoretical (delithiation)"),
+]:
+    _add(f"th.{_k}", _es, _en)
+_add("xl.theory", "teoría", "theory")
+
+_add("rx.title", "Parámetros redox: ΔEp, E½ y |ipa/ipc| ({a} / {c})",
+     "Redox parameters: ΔEp, E½ and |ipa/ipc| ({a} / {c})")
+_add("rx.e_half", "E½ (V)", "E½ (V)")
+_add("rx.i_a", "I pico anódico (mA)", "Anodic peak I (mA)")
+_add("rx.i_c", "I pico catódico (mA)", "Cathodic peak I (mA)")
+_add("rx.ratio", "|ipa / ipc|", "|ipa / ipc|")
+_add("rx.help", "E½ = (Epa + Epc)/2. Un ΔEp grande a velocidad baja indica cinética lenta o resistencia interfacial "
+     "alta; |ipa/ipc| ≈ 1 indica un proceso reversible. Los picos en el borde de la ventana no se usan.",
+     "E½ = (Epa + Epc)/2. A large ΔEp at a low scan rate points to slow kinetics or high interfacial resistance; "
+     "|ipa/ipc| ≈ 1 indicates a reversible process. Peaks on the window edge are not used.")
+_add("qw.title", "Carga dentro de cada ventana de potencial", "Charge inside each potential window")
+_add("qw.q", "Carga (C)", "Charge (C)")
+_add("qw.mah", "Capacidad (mAh)", "Capacity (mAh)")
+_add("qw.mah_g", "Capacidad (mAh/g)", "Capacity (mAh/g)")
+_add("qw.pct", "% de la carga del barrido", "% of the sweep charge")
+
+# --------------------------------------------------------------------------
+# Cinética (varias velocidades)
+# --------------------------------------------------------------------------
+_add("kin.title", "Cinética: varias velocidades de barrido", "Kinetics: several scan rates")
+_add("kin.help", "Sube CV del mismo electrodo medidas a distintas velocidades. Se usan los picos de las ventanas "
+     "definidas arriba (los picos «en el borde» se descartan) y el ciclo que elijas.",
+     "Upload CVs of the same electrode measured at different scan rates. The peaks of the windows defined above "
+     "are used (peaks «on the edge» are discarded) for the cycle you choose.")
+_add("kin.rates", "Velocidad de barrido de cada archivo (mV/s)", "Scan rate of each file (mV/s)")
+_add("kin.rate", "Velocidad (mV/s)", "Scan rate (mV/s)")
+_add("kin.cycle", "Ciclo a analizar", "Cycle to analyse")
+_add("kin.need_files", "Hacen falta al menos dos archivos con velocidades distintas.",
+     "At least two files with different scan rates are needed.")
+_add("kin.no_peaks", "No hay picos verdaderos en ese ciclo: ajusta las ventanas de picos o el ciclo.",
+     "There are no true peaks in that cycle: adjust the peak windows or the cycle.")
+_add("kin.b_title", "Exponente b (i = a·vᵇ)", "b exponent (i = a·vᵇ)")
+_add("kin.b_help", "b ≈ 0,5: control difusivo (inserción en el sólido) · 0,65–0,85: mixto · b ≈ 1: capacitivo o "
+     "superficial.", "b ≈ 0.5: diffusion-controlled (insertion in the solid) · 0.65–0.85: mixed · b ≈ 1: "
+     "capacitive or surface-controlled.")
+for _k, _es, _en in [
+    ("n", "Nº de velocidades", "No. of scan rates"), ("b", "b", "b"), ("a", "a (A/(mV/s)ᵇ)", "a (A/(mV/s)ᵇ)"),
+    ("r2", "R²", "R²"), ("regime", "Régimen", "Regime"),
+    ("slope", "Pendiente vs √v (A/(V/s)½)", "Slope vs √v (A/(V/s)½)"), ("intercept", "Ordenada (A)", "Intercept (A)"),
+    ("d", "D aparente (cm²/s)", "Apparent D (cm²/s)"),
+]:
+    _add(f"kin.{_k}", _es, _en)
+_add("regime.diffusive", "Difusivo", "Diffusive")
+_add("regime.mixed", "Mixto", "Mixed")
+_add("regime.capacitive", "Capacitivo", "Capacitive")
+_add("kin.plot_b", "log|ip| frente a log v", "log|ip| vs log v")
+_add("kin.plot_sqrt", "|ip| frente a √v", "|ip| vs √v")
+_add("kin.sqrt_title", "Ajuste lineal a √v y coeficiente de difusión (Randles–Ševčík)",
+     "Linear fit to √v and diffusion coefficient (Randles–Ševčík)")
+_add("kin.rs_check", "Estimar el coeficiente de difusión aparente", "Estimate the apparent diffusion coefficient")
+_add("kin.rs_help", "Solo orden de magnitud: supone un proceso reversible con difusión semiinfinita a 25 °C. En "
+     "materiales de inserción la concentración y el área real son difíciles de fijar.",
+     "Order of magnitude only: assumes a reversible process with semi-infinite diffusion at 25 °C. In insertion "
+     "materials the concentration and the real area are hard to define.")
+_add("kin.rs_n", "Electrones por proceso (n)", "Electrons per process (n)")
+_add("kin.rs_area", "Área del electrodo (cm²)", "Electrode area (cm²)")
+_add("kin.rs_conc", "Concentración de Li en el sólido (mol/cm³)", "Li concentration in the solid (mol/cm³)")
+_add("kin.dunn_title", "Separación capacitiva / difusiva (Dunn)", "Capacitive / diffusive separation (Dunn)")
+_add("kin.dunn_help", "A cada potencial se ajusta i = k₁·v + k₂·v½ con todas las velocidades. k₁·v es la parte "
+     "capacitiva. Con solo dos velocidades el ajuste es exacto y poco fiable: usa tres o más.",
+     "At each potential i = k₁·v + k₂·v½ is fitted with all scan rates. k₁·v is the capacitive part. With only two "
+     "scan rates the fit is exact and unreliable: use three or more.")
+_add("kin.dunn_sweep", "Barrido", "Sweep")
+_add("kin.dunn_rate", "Velocidad mostrada (mV/s)", "Displayed scan rate (mV/s)")
+_add("kin.cap_pct", "Capacitivo (%)", "Capacitive (%)")
+_add("kin.diff_pct", "Difusivo (%)", "Diffusive (%)")
+_add("kin.plot_dunn_frac", "Contribución capacitiva y difusiva por velocidad",
+     "Capacitive and diffusive contribution per scan rate")
+_add("kin.plot_dunn_cv", "CV a {rate} mV/s: corriente total y parte capacitiva",
+     "CV at {rate} mV/s: total current and capacitive part")
+_add("kin.total", "Corriente total", "Total current")
+_add("kin.cap", "Parte capacitiva (k₁·v)", "Capacitive part (k₁·v)")
+_add("kin.excel", "Cinética (Excel)", "Kinetics (Excel)")
+_add("xl.kin_b", "Exponente b", "b exponent")
+_add("xl.kin_sqrt", "Ajuste sqrt(v)", "sqrt(v) fit")
+_add("xl.kin_dunn", "Dunn", "Dunn")
+
+# --------------------------------------------------------------------------
+# Ciclado galvanostático
+# --------------------------------------------------------------------------
+_add("nav.gcd", "Ciclado galvanostático", "Galvanostatic cycling")
+_add("gcd.title", "Ciclado galvanostático y C-rate", "Galvanostatic cycling and C-rate")
+_add("gcd.intro", "Calcula la corriente a programar en NOVA para un C-rate y analiza una tabla de ciclado: "
+     "capacidad específica, eficiencia coulómbica (delitiación / litiación) y retención.",
+     "Calculate the current to programme in NOVA for a given C-rate and analyse a cycling table: specific "
+     "capacity, coulombic efficiency (delithiation / lithiation) and retention.")
+_add("gcd.crate_title", "Corriente para un C-rate", "Current for a C-rate")
+_add("gcd.mass", "Masa activa (mg)", "Active mass (mg)")
+_add("gcd.ref_capacity", "Capacidad de referencia para 1C (mAh/g)", "Reference capacity for 1C (mAh/g)")
+_add("gcd.crate", "C-rate (0,1 = C/10)", "C-rate (0.1 = C/10)")
+_add("gcd.current_mA", "Corriente a aplicar (mA)", "Current to apply (mA)")
+_add("gcd.current_A", "Corriente a aplicar (A)", "Current to apply (A)")
+_add("gcd.density", "Densidad de corriente (mA/g)", "Current density (mA/g)")
+_add("gcd.used_current", "Corriente realmente usada (mA, para convertir tiempos)",
+     "Current actually used (mA, to convert times)")
+_add("gcd.real_crate", "C-rate real con esa corriente: **{value}**", "Actual C-rate at that current: **{value}**")
+_add("gcd.table_title", "Tabla de ciclado", "Cycling table")
+_add("gcd.table_help", "Rellena por ciclo la capacidad (mAh) o el tiempo (h) de cada semiciclo; si pones las dos, "
+     "manda la capacidad. Puedes pegar celdas desde Excel.",
+     "For each cycle enter the capacity (mAh) or the time (h) of each half-cycle; if both are given the capacity "
+     "is used. You can paste cells from Excel.")
+_add("gcd.ref_cycle", "Ciclo de referencia para la retención", "Reference cycle for retention")
+_add("gcd.empty", "Rellena al menos un ciclo para ver los resultados.", "Fill in at least one cycle to see results.")
+_add("gcd.plot", "Capacidad y eficiencia coulómbica por ciclo", "Capacity and coulombic efficiency per cycle")
+_add("gcd.download", "Descargar resultados (Excel)", "Download results (Excel)")
+for _k, _es, _en in [
+    ("q_lit_mAh", "Q litiación (mAh)", "Q lithiation (mAh)"),
+    ("q_delit_mAh", "Q delitiación (mAh)", "Q delithiation (mAh)"),
+    ("t_lit_h", "t litiación (h)", "t lithiation (h)"),
+    ("t_delit_h", "t delitiación (h)", "t delithiation (h)"),
+]:
+    _add(f"gcd.col.{_k}", _es, _en)
+_add("xl.gcd", "Ciclado", "Cycling")
+
 
 # --------------------------------------------------------------------------
 # API

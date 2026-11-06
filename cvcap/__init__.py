@@ -1,6 +1,6 @@
 """cvcap: capacidad de electrodos a partir de voltametrías cíclicas exportadas de NOVA."""
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
 from .analysis import AnalysisResult, active_mass_mg, analyze, disc_area_cm2  # noqa: E402
 from .i18n import CvcapError, Note, t  # noqa: E402

@@ -24,6 +24,8 @@ from openpyxl import Workbook
 from openpyxl.styles import Font
 from openpyxl.utils import get_column_letter
 
+from . import electrochem as el
+from . import kinetics as kin
 from .analysis import AnalysisResult, cycle_label, localize_cycles, localize_summary
 from .i18n import Note, t
 
@@ -93,8 +95,13 @@ def _sheet_name(base: str, used: set) -> str:
     return candidate
 
 
-def results_to_excel(results: List[AnalysisResult], lang: str = "es") -> bytes:
-    """Libro con resumen, todos los ciclos y el detalle de segmentos de cada archivo."""
+def results_to_excel(results: List[AnalysisResult], lang: str = "es", theory: Optional[dict] = None) -> bytes:
+    """Libro con resumen, todos los ciclos y el detalle de segmentos de cada archivo.
+
+    Si se pasa ``theory`` (argumentos de :func:`cvcap.electrochem.theory_table`: ``molar_mass``,
+    ``n_electrons`` y, opcionalmente, ``additive_mass_mg`` y ``additive_capacity_mAh_g``) se añade una hoja
+    por archivo con la capacidad corregida, los electrones por fórmula y el % de la teórica.
+    """
     buffer = io.BytesIO()
     used: set = set()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
@@ -105,9 +112,42 @@ def results_to_excel(results: List[AnalysisResult], lang: str = "es") -> bytes:
             stem = re.sub(r"\.[A-Za-z0-9]+$", "", r.name)[:20]
             r.segments_table(lang).to_excel(writer, sheet_name=_sheet_name(f"{stem}_{t('xl.seg', lang)}", used),
                                             index=False)
+            if theory and r.mass_mg:
+                el.localize_theory(el.theory_table(r.cycles, r.mass_mg, **theory), lang).to_excel(
+                    writer, sheet_name=_sheet_name(f"{stem}_{t('xl.theory', lang)}", used), index=False)
             if r.notes:
                 pd.DataFrame({t("col.notes", lang): r.notes_text(lang)}).to_excel(
                     writer, sheet_name=_sheet_name(f"{stem}_{t('xl.notes', lang)}", used), index=False)
+    return buffer.getvalue()
+
+
+def kinetics_to_excel(b_df: pd.DataFrame, sqrt_df: pd.DataFrame, dunn: Optional[kin.DunnResult] = None,
+                      lang: str = "es") -> bytes:
+    """Excel con el exponente b, el ajuste a √v y (si se calculó) la separación de Dunn."""
+    buffer = io.BytesIO()
+    used: set = set()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        kin.localize_b_table(b_df, lang).to_excel(writer, sheet_name=_sheet_name(t("xl.kin_b", lang), used),
+                                                  index=False)
+        kin.localize_sqrt_table(sqrt_df, lang).to_excel(
+            writer, sheet_name=_sheet_name(t("xl.kin_sqrt", lang), used), index=False)
+        if dunn is not None:
+            frame = pd.DataFrame({"E (V)": dunn.potential, "k1 (A/(mV/s))": dunn.k1, "k2 (A/(mV/s)^0.5)": dunn.k2})
+            for rate, total, cap in zip(dunn.rates, dunn.i_total, dunn.i_cap):
+                frame[f"i total {rate:g} mV/s (A)"] = total
+                frame[f"i cap {rate:g} mV/s (A)"] = cap
+            name = _sheet_name(t("xl.kin_dunn", lang), used)
+            frame.to_excel(writer, sheet_name=name, index=False)
+            frac = dunn.fractions.rename(columns={"rate": t("kin.rate", lang), "cap_pct": t("kin.cap_pct", lang),
+                                                  "diff_pct": t("kin.diff_pct", lang)})
+            frac.to_excel(writer, sheet_name=_sheet_name(t("xl.kin_dunn", lang) + "_f", used), index=False)
+    return buffer.getvalue()
+
+
+def gcd_to_excel(table: pd.DataFrame, lang: str = "es") -> bytes:
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+        el.localize_gcd(table, lang).to_excel(writer, sheet_name=t("xl.gcd", lang)[:31], index=False)
     return buffer.getvalue()
 
 

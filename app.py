@@ -15,7 +15,9 @@ import streamlit as st
 
 from cvcap import __version__, colors
 from cvcap import analysis as an
+from cvcap import electrochem as el
 from cvcap import io as cvio
+from cvcap import kinetics as kin
 from cvcap import peaks as pk
 from cvcap import report
 from cvcap.db import MATERIALS, PREP_FIELDS, Database, record_from_result
@@ -84,7 +86,7 @@ def parse_table(data: bytes, name: str) -> pd.DataFrame:
 db = get_db(db_location())
 
 with st.sidebar:
-    page = st.radio(T("nav.page"), ["analyze", "database"], format_func=lambda p: T(f"nav.{p}"), key="page")
+    page = st.radio(T("nav.page"), ["analyze", "gcd", "database"], format_func=lambda p: T(f"nav.{p}"), key="page")
 
 
 class _LocalFile:
@@ -279,6 +281,21 @@ def page_analyze():
                           c2.number_input(T("sb.e_max"), value=1.0, step=0.05, format="%.3f", key="wmax"))
             auto_sign = st.checkbox(T("sb.auto_sign"), value=True, key="auto_sign")
 
+        with st.expander(T("sb.theory")):
+            ref_key = st.selectbox(T("th.material"), list(el.REFERENCE_MATERIALS),
+                                   format_func=lambda k: T(f"th.mat.{k}"), key="th_material")
+            ref = el.REFERENCE_MATERIALS[ref_key]
+            molar_mass = st.number_input(T("th.molar"), min_value=0.1, value=float(ref.molar_mass), step=1.0,
+                                         key=f"th_molar_{ref_key}")
+            n_electrons = st.number_input(T("th.n_e"), min_value=0.1, value=float(ref.n_electrons), step=0.5,
+                                          key=f"th_n_{ref_key}")
+            st.caption(T("th.theo_is", value=fmt(el.theoretical_capacity(n_electrons, molar_mass), 1)))
+            add_mass = st.number_input(T("th.add_mass"), min_value=0.0, value=0.0, step=0.01, format="%.3f",
+                                       key="th_add_mass", help=T("help.blank"))
+            add_cap = st.number_input(T("th.add_cap"), min_value=0.0, value=0.0, step=1.0, key="th_add_cap")
+        theory = {"molar_mass": molar_mass, "n_electrons": n_electrons, "additive_mass_mg": add_mass,
+                  "additive_capacity_mAh_g": add_cap}
+
         st.header(T("sb.plots"))
         ramp = st.selectbox(T("sb.ramp"), list(colors.RAMPS), format_func=lambda r: T(f"ramp.{r}"), key="ramp")
         darkest_first = st.checkbox(T("sb.darkest_first"), key="darkest_first")
@@ -396,7 +413,8 @@ def page_analyze():
         if not complete.empty:
             m4.metric(T("metric.ret_last"), fmt(complete["ret"].iloc[-1], 1, " %"))
 
-        tabs = st.tabs([T("tab.plots"), T("tab.peaks"), T("tab.cycles"), T("tab.segments"), T("tab.save")])
+        tabs = st.tabs([T("tab.plots"), T("tab.peaks"), T("tab.cycles"), T("tab.theory"), T("tab.segments"),
+                        T("tab.save")])
         with tabs[0]:
             st.plotly_chart(cv_figure(res.cv.potential_V, res.current_A, res.point_cycle, peaks_df, ramp,
                                       darkest_first, show_peaks, peak_labels, T("plot.cv"), show_edge),
@@ -413,25 +431,41 @@ def page_analyze():
                 st.markdown(f"**{T('pk.pivot_title')}**")
                 st.dataframe(pivot, use_container_width=True)
                 if dep_pair:
-                    sep = pk.peak_separation(peaks_df, *dep_pair)
-                    if not sep.empty:
-                        st.markdown(f"**{T('pk.dep_title', a=dep_pair[0], c=dep_pair[1])}**")
+                    rx = pk.redox_parameters(peaks_df, *dep_pair)
+                    if not rx.empty:
+                        st.markdown(f"**{T('rx.title', a=dep_pair[0], c=dep_pair[1])}**")
+                        st.caption(T("rx.help"))
                         st.dataframe(pd.DataFrame({
-                            T("col.cycle"): sep["cycle"].astype(int),
-                            T("pk.e_a"): sep["e_a"], T("pk.e_c"): sep["e_c"], T("pk.dep"): sep["dep"],
+                            T("col.cycle"): rx["cycle"].astype(int),
+                            T("pk.e_a"): rx["e_a"], T("pk.e_c"): rx["e_c"], T("pk.dep"): rx["dep"],
+                            T("rx.e_half"): rx["e_half"], T("rx.i_a"): rx["i_a"] * 1e3,
+                            T("rx.i_c"): rx["i_c"] * 1e3, T("rx.ratio"): rx["ratio"],
                         }), hide_index=True, use_container_width=True)
                 st.markdown(f"**{T('pk.all_title')}**")
                 st.dataframe(long, hide_index=True, use_container_width=True)
                 st.plotly_chart(peak_trend_figure(peaks_df), use_container_width=True)
+            if windows:
+                charges = pk.window_charges(res, windows)
+                if not charges.empty:
+                    st.markdown(f"**{T('qw.title')}**")
+                    st.dataframe(pd.DataFrame({
+                        T("pk.name"): charges["name"],
+                        T("pk.kind"): charges["kind"].map(lambda k: T(f"kind_short.{k}")),
+                        T("col.cycle"): charges["cycle"].astype(int),
+                        T("qw.q"): charges["q_C"], T("qw.mah"): charges["mah"], T("qw.mah_g"): charges["mah_g"],
+                        T("qw.pct"): charges["pct"],
+                    }), hide_index=True, use_container_width=True)
         with tabs[2]:
             st.dataframe(res.cycles_table(lang), hide_index=True, use_container_width=True)
         with tabs[3]:
+            theory_section(res, theory)
+        with tabs[4]:
             st.dataframe(res.segments_table(lang), hide_index=True, use_container_width=True)
             nova = res.nova_table(lang)
             if nova is not None:
                 st.markdown(f"**{T('nova.title')}**")
                 st.dataframe(nova, hide_index=True, use_container_width=True)
-        with tabs[4]:
+        with tabs[5]:
             save_section(res, label, k, peaks_df, windows)
 
     if not results:
@@ -443,6 +477,9 @@ def page_analyze():
     if len(results) > 1:
         st.plotly_chart(compare_figure([(r.name, r.cycles) for r in results], "cap"), use_container_width=True)
 
+    if len(results) > 1:
+        kinetics_section(results, items, scan_rate_mV, ref_cycle, area)
+
     st.subheader(T("dl.title"))
     unit = st.selectbox(T("dl.origin_unit"), list(CURRENT_UNIT_LABELS), format_func=CURRENT_UNIT_LABELS.get,
                         key="origin_unit")
@@ -450,13 +487,139 @@ def page_analyze():
     c1.download_button(T("dl.origin"), data=report.origin_workbook(items, lang, unit),
                        file_name="cv_origin.xlsx", use_container_width=True, help=T("help.origin"),
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    c2.download_button(T("dl.excel"), data=report.results_to_excel(results, lang), file_name="cv_results.xlsx",
+    c2.download_button(T("dl.excel"), data=report.results_to_excel(results, lang, theory), file_name="cv_results.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                        use_container_width=True)
     c3.download_button(T("dl.csv"), data=report.results_to_csv(results, lang), file_name="cv_cycles.csv",
                        mime="text/csv", use_container_width=True)
     with st.expander(T("app.how")):
         st.markdown(T("doc.method"))
+
+
+def theory_section(res, theory):
+    """Pestaña «Teórica y e⁻»: % de la capacidad teórica y electrones (Li) por fórmula en cada ciclo."""
+    if not res.mass_mg:
+        st.info(T("th.need_mass"))
+        return
+    table = el.theory_table(res.cycles, res.mass_mg, **theory)
+    st.markdown(f"**{T('th.title')}**")
+    st.metric(T("th.metric"), fmt(el.theoretical_capacity(theory["n_electrons"], theory["molar_mass"]), 1, " mAh/g"))
+    st.dataframe(el.localize_theory(table, lang), hide_index=True, use_container_width=True)
+    fig = go.Figure()
+    for j, col in enumerate(("pct_lit", "pct_delit")):
+        fig.add_trace(go.Bar(x=table["cycle"], y=table[col], name=T(f"th.{col}"), marker_color=colors.categorical(j)))
+    fig.add_hline(y=100, line_dash="dot", line_color="#888888")
+    fig.update_layout(title=T("th.plot"), barmode="group", height=360, xaxis=dict(title=T("col.cycle"), dtick=1),
+                      yaxis_title="%", legend_title_text="", margin=dict(t=50, r=10))
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def kinetics_section(results, items, default_rate, ref_cycle, area):
+    """Exponente b, ajuste a √v y separación de Dunn con varios archivos medidos a distinta velocidad."""
+    st.divider()
+    st.header(T("kin.title"))
+    st.caption(T("kin.help"))
+    names = [r.name for r in results]
+    guess = [round(float(r.summary.get("scan_rate") or default_rate), 4) for r in results]
+    rate_col = T("kin.rate")
+    table = st.data_editor(
+        pd.DataFrame({T("mass.file"): names, rate_col: guess}), hide_index=True, disabled=[T("mass.file")],
+        use_container_width=True, column_config={rate_col: st.column_config.NumberColumn(min_value=0.0001,
+                                                                                         format="%.4f")},
+        key="kin_rates_" + lang + "|".join(names) + "|" + ",".join(map(str, guess)))
+    rates = [float(v) for v in table[rate_col]]
+    if len({round(v, 9) for v in rates if v > 0}) < 2:
+        st.info(T("kin.need_files"))
+        return
+    max_cycle = int(max(r.summary.get("n_cycles", 1) for r in results))
+    cycle = int(st.number_input(T("kin.cycle"), min_value=1, max_value=max(max_cycle, 1),
+                                value=min(ref_cycle, max_cycle), step=1, key="kin_cycle"))
+
+    currents = kin.peak_currents_by_rate([(v, it.peaks) for v, it in zip(rates, items)], cycle)
+    b_df = kin.b_table(currents)
+    sqrt_df = kin.sqrt_rate_table(currents)
+    dunn = None
+
+    st.subheader(T("kin.b_title"))
+    st.caption(T("kin.b_help"))
+    if b_df.empty:
+        st.info(T("kin.no_peaks"))
+    else:
+        st.dataframe(kin.localize_b_table(b_df, lang), hide_index=True, use_container_width=True)
+        fig = go.Figure()
+        for j, row in enumerate(b_df.itertuples(index=False)):
+            sub = currents[(currents["name"] == row.name) & (currents["kind"] == row.kind)].sort_values("rate")
+            color = colors.categorical(j)
+            fig.add_trace(go.Scatter(x=sub["rate"], y=sub["i_peak"].abs() * 1e3, mode="markers", name=str(row.name),
+                                     marker=dict(size=10, color=color)))
+            fit_v = np.array([sub["rate"].min(), sub["rate"].max()])
+            fig.add_trace(go.Scatter(x=fit_v, y=row.a * fit_v ** row.b * 1e3, mode="lines", showlegend=False,
+                                     line=dict(color=color, width=2),
+                                     hovertemplate=f"b = {row.b:.2f}<extra>{row.name}</extra>"))
+        fig.update_layout(title=T("kin.plot_b"), height=380, legend_title_text="", margin=dict(t=50, r=10),
+                          xaxis=dict(title=T("kin.rate"), type="log"),
+                          yaxis=dict(title=T("pk.i"), type="log"))
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader(T("kin.sqrt_title"))
+        out = kin.localize_sqrt_table(sqrt_df, lang)
+        if st.checkbox(T("kin.rs_check"), key="kin_rs", help=T("kin.rs_help")):
+            c1, c2, c3 = st.columns(3)
+            n_rs = c1.number_input(T("kin.rs_n"), min_value=0.1, value=1.0, step=0.5, key="kin_rs_n")
+            area_rs = c2.number_input(T("kin.rs_area"), min_value=0.0, value=float(area or 1.0), step=0.1,
+                                      format="%.3f", key="kin_rs_area")
+            conc = c3.number_input(T("kin.rs_conc"), min_value=0.0, value=0.0, step=0.001, format="%.4f",
+                                   key="kin_rs_conc")
+            try:
+                out[T("kin.d")] = [kin.randles_sevcik_D(s, n_rs, area_rs, conc) for s in sqrt_df["slope"]]
+            except CvcapError as exc:
+                st.warning(err_text(exc))
+        st.dataframe(out, hide_index=True, use_container_width=True)
+        fig = go.Figure()
+        for j, row in enumerate(sqrt_df.itertuples(index=False)):
+            sub = currents[(currents["name"] == row.name) & (currents["kind"] == row.kind)].sort_values("rate")
+            x = np.sqrt(sub["rate"] / 1000.0)
+            color = colors.categorical(j)
+            fig.add_trace(go.Scatter(x=x, y=sub["i_peak"].abs() * 1e3, mode="markers", name=str(row.name),
+                                     marker=dict(size=10, color=color)))
+            fig.add_trace(go.Scatter(x=x, y=(row.slope * x + row.intercept) * 1e3, mode="lines", showlegend=False,
+                                     line=dict(color=color, width=2)))
+        fig.update_layout(title=T("kin.plot_sqrt"), height=360, legend_title_text="", margin=dict(t=50, r=10),
+                          xaxis_title="√v (V/s)½", yaxis_title=T("pk.i"))
+        st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader(T("kin.dunn_title"))
+    st.caption(T("kin.dunn_help"))
+    kind = st.radio(T("kin.dunn_sweep"), [an.CATHODIC, an.ANODIC], horizontal=True, key="kin_dunn_kind",
+                    format_func=lambda k: T(f"kind_short.{k}"))
+    try:
+        dunn = kin.dunn_from_results(list(zip(rates, results)), cycle, kind)
+    except CvcapError as exc:
+        st.info(err_text(exc))
+    if dunn is not None:
+        frac = dunn.fractions
+        st.dataframe(pd.DataFrame({T("kin.rate"): frac["rate"], T("kin.cap_pct"): frac["cap_pct"],
+                                   T("kin.diff_pct"): frac["diff_pct"]}), hide_index=True, use_container_width=True)
+        fig = go.Figure()
+        labels = [f"{r:g}" for r in frac["rate"]]
+        fig.add_trace(go.Bar(x=labels, y=frac["cap_pct"], name=T("kin.cap_pct"), marker_color=colors.categorical(0)))
+        fig.add_trace(go.Bar(x=labels, y=frac["diff_pct"], name=T("kin.diff_pct"), marker_color=colors.categorical(1)))
+        fig.update_layout(title=T("kin.plot_dunn_frac"), barmode="stack", height=340, legend_title_text="",
+                          xaxis_title=T("kin.rate"), yaxis_title="%", margin=dict(t=50, r=10))
+        st.plotly_chart(fig, use_container_width=True)
+        shown = st.selectbox(T("kin.dunn_rate"), dunn.rates, format_func=lambda r: f"{r:g}", key="kin_dunn_rate")
+        idx = dunn.rates.index(shown)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=dunn.potential, y=dunn.i_total[idx] * 1e3, mode="lines", name=T("kin.total"),
+                                 line=dict(color=colors.categorical(0), width=2)))
+        fig.add_trace(go.Scatter(x=dunn.potential, y=dunn.i_cap[idx] * 1e3, mode="lines", name=T("kin.cap"),
+                                 fill="tozeroy", line=dict(color=colors.categorical(1), width=1.5)))
+        fig.update_layout(title=T("kin.plot_dunn_cv", rate=f"{shown:g}"), height=380, legend_title_text="",
+                          xaxis_title=T("axis.potential"), yaxis_title=T("axis.current"), margin=dict(t=50, r=10))
+        st.plotly_chart(fig, use_container_width=True)
+    st.download_button(T("kin.excel"), data=report.kinetics_to_excel(b_df, sqrt_df, dunn, lang),
+                       file_name="cv_kinetics.xlsx", key="kin_download",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 def peak_window_editor():
@@ -544,6 +707,76 @@ def save_section(res, label, index, peaks_df, windows):
             st.success(T("save.ok", id=rec.id))
         except CvcapError as exc:
             st.error(err_text(exc))
+
+
+# ==========================================================================
+# Página: ciclado galvanostático
+# ==========================================================================
+def page_gcd():
+    st.title(T("gcd.title"))
+    st.write(T("gcd.intro"))
+    st.subheader(T("gcd.crate_title"))
+    c1, c2, c3 = st.columns(3)
+    ref_key = c1.selectbox(T("th.material"), list(el.REFERENCE_MATERIALS), format_func=lambda k: T(f"th.mat.{k}"),
+                           key="gcd_material")
+    ref = el.REFERENCE_MATERIALS[ref_key]
+    molar = c2.number_input(T("th.molar"), min_value=0.1, value=float(ref.molar_mass), step=1.0,
+                            key=f"gcd_molar_{ref_key}")
+    n_e = c3.number_input(T("th.n_e"), min_value=0.1, value=float(ref.n_electrons), step=0.5,
+                          key=f"gcd_n_{ref_key}")
+    ref_capacity = el.theoretical_capacity(n_e, molar)
+    c1, c2, c3 = st.columns(3)
+    mass = c1.number_input(T("gcd.mass"), min_value=0.0, value=2.0, step=0.01, format="%.3f", key="gcd_mass")
+    c2.metric(T("gcd.ref_capacity"), fmt(ref_capacity, 1))
+    c_rate = c3.number_input(T("gcd.crate"), min_value=0.0, value=0.1, step=0.05, format="%.3f", key="gcd_crate")
+    current = None
+    if mass > 0:
+        current = el.c_rate_current_mA(mass, ref_capacity, c_rate)
+        m1, m2, m3 = st.columns(3)
+        m1.metric(T("gcd.current_mA"), fmt(current, 4))
+        m2.metric(T("gcd.current_A"), f"{current / 1000:.3e}")
+        m3.metric(T("gcd.density"), fmt(el.current_density_mA_g(current, mass), 1))
+    used_default = round(float(current), 5) if current else 0.0
+    used = st.number_input(T("gcd.used_current"), min_value=0.0, value=used_default, step=0.001, format="%.5f",
+                           key=f"gcd_used_{used_default}")
+    if used and mass > 0:
+        st.caption(T("gcd.real_crate", value=fmt(el.c_rate_from_current(used, mass, ref_capacity), 3)))
+
+    st.subheader(T("gcd.table_title"))
+    st.caption(T("gcd.table_help"))
+    labels = {c: T(f"gcd.col.{c}") for c in el.GCD_INPUT_COLUMNS[1:]}
+    labels["cycle"] = T("col.cycle")
+    if "gcd_base" not in ss:
+        ss["gcd_base"] = pd.DataFrame({"cycle": list(range(1, 11))}).reindex(columns=el.GCD_INPUT_COLUMNS)
+    edited = st.data_editor(
+        ss["gcd_base"].rename(columns=labels), num_rows="dynamic", hide_index=True, use_container_width=True,
+        key="gcd_editor_" + lang,
+        column_config={labels[c]: st.column_config.NumberColumn(format="%.5f" if c != "cycle" else "%d")
+                       for c in el.GCD_INPUT_COLUMNS})
+    data = edited.rename(columns={v: k for k, v in labels.items()})
+    ref_cycle = int(st.number_input(T("gcd.ref_cycle"), min_value=1, value=1, step=1, key="gcd_ref"))
+    if mass <= 0:
+        st.info(T("err.mass_needed"))
+        return
+    table = el.gcd_table(data, mass, current_mA=used or None, reference_cycle=ref_cycle)
+    if table.empty:
+        st.info(T("gcd.empty"))
+        return
+    st.dataframe(el.localize_gcd(table, lang), hide_index=True, use_container_width=True)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=table["cycle"], y=table["cap_lit"], mode="lines+markers", name=T("legend.lithiation"),
+                             line=dict(color=colors.categorical(0), width=2), marker=dict(size=9)))
+    fig.add_trace(go.Scatter(x=table["cycle"], y=table["cap_delit"], mode="lines+markers",
+                             name=T("legend.delithiation"), line=dict(color=colors.categorical(1), width=2),
+                             marker=dict(size=9)))
+    fig.add_trace(go.Scatter(x=table["cycle"], y=table["ce"], mode="lines+markers", name=T("col.ce"), yaxis="y2",
+                             line=dict(color="#888888", width=1.5, dash="dot"), marker=dict(size=7)))
+    fig.update_layout(title=T("gcd.plot"), height=400, legend_title_text="", margin=dict(t=50, r=10),
+                      xaxis=dict(title=T("col.cycle"), dtick=1), yaxis_title=f"{T('axis.capacity')} (mAh/g)",
+                      yaxis2=dict(title=T("col.ce"), overlaying="y", side="right", range=[0, 110]))
+    st.plotly_chart(fig, use_container_width=True)
+    st.download_button(T("gcd.download"), data=report.gcd_to_excel(table, lang), file_name="gcd_results.xlsx",
+                       mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 # ==========================================================================
@@ -703,6 +936,8 @@ def backup_section(catalog: pd.DataFrame):
 # --------------------------------------------------------------------------
 if page == "analyze":
     page_analyze()
+elif page == "gcd":
+    page_gcd()
 else:
     page_database()
 with st.sidebar:
