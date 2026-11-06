@@ -189,19 +189,30 @@ CHARGE_COLUMNS = ["cycle", "name", "kind", "q_C", "mah", "mah_g", "pct"]
 def window_charges(result: AnalysisResult, windows: List[PeakWindow]) -> pd.DataFrame:
     """Carga que pasa dentro de cada ventana de potencial, por ciclo y barrido.
 
-    ``pct`` es el porcentaje de la carga total (en valor absoluto) del barrido. Útil para repartir la
-    capacidad entre procesos (p. ej. SEI frente a litiación o los estadios del grafito).
+    Sigue el método del análisis: con ``"signo"`` se cuenta solo la corriente catódica (negativa) en los
+    barridos catódicos y solo la anódica (positiva) en los anódicos, de modo que el porcentaje nunca supera
+    el 100 %; con ``"direccion"`` se usa la carga neta del barrido. ``pct`` es la fracción de la carga total
+    del barrido (misma magnitud) que cae dentro de la ventana. Útil para repartir la capacidad entre procesos
+    (p. ej. SEI frente a litiación o los estadios del grafito).
     """
     cv = result.cv
     rate = result.params.get("scan_rate_V_s")
+    by_sign = result.method == "signo"
+
+    def charge(a, b, sign, kind, window):
+        net, q_pos, q_neg = _segment_charges(cv, a, b, sign, result.current_A, rate, window)
+        if by_sign:
+            return abs(q_pos if kind == ANODIC else q_neg)
+        return abs(net)
+
     rows = []
     for cycle, kind, a, b in _segments_of(result):
         sign = 1 if kind == ANODIC else -1
-        total = abs(_segment_charges(cv, a, b, sign, result.current_A, rate, None)[0])
+        total = charge(a, b, sign, kind, None)
         for w in windows:
             if w.kind != kind:
                 continue
-            q = abs(_segment_charges(cv, a, b, sign, result.current_A, rate, (w.e_min, w.e_max))[0])
+            q = charge(a, b, sign, kind, (w.e_min, w.e_max))
             row = {"cycle": cycle, "name": w.name, "kind": kind, "q_C": q, "mah": q / 3.6,
                    "pct": q / total * 100 if total else np.nan}
             row["mah_g"] = q / 3.6 / (result.mass_mg / 1000.0) if result.mass_mg else np.nan

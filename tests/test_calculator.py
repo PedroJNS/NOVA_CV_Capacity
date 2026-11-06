@@ -188,6 +188,25 @@ class TestRedoxAndWindowCharges(unittest.TestCase):
             self.assertAlmostEqual(r["pct"], 100.0, places=6)
             self.assertAlmostEqual(r["mah_g"], cyc.loc[r["cycle"], "cap_lit"], places=6)
 
+    def test_window_charges_by_sign_never_exceeds_100(self):
+        # CV con corriente negativa al inicio del barrido anódico: la carga neta anódica queda muy por debajo
+        # de la positiva y con el método «direccion» el % podía pasar del 100 %.
+        cv = graphite_like_cv(cycles=3)
+        direction = np.sign(np.gradient(cv.potential_V))
+        low = (direction > 0) & (cv.potential_V < 0.15)
+        cv.current_A[low] -= 6e-4
+        res = analyze(cv, mass_mg=2.0, method="signo")
+        wins = [pk.PeakWindow("a", ANODIC, 0.0, 0.3), pk.PeakWindow("b", ANODIC, 0.3, 2.1),
+                pk.PeakWindow("c", CATHODIC, 0.0, 2.1)]
+        out = pk.window_charges(res, wins)
+        self.assertTrue((out["pct"] <= 100.0 + 1e-6).all())
+        full = pk.window_charges(res, [pk.PeakWindow("todo", ANODIC, 0.0, 2.1)])
+        np.testing.assert_allclose(full["pct"], 100.0)
+        # la carga anódica de la ventana completa es la de delitiación (corriente positiva) del ciclo
+        delit = res.cycles.set_index("cycle")["q_delit"]
+        for _, r in full.iterrows():
+            self.assertLessEqual(r["q_C"], delit.loc[r["cycle"]] + 1e-12)
+
     def test_window_charges_split_adds_up(self):
         parts = [pk.PeakWindow("a", ANODIC, 0.0, 0.3), pk.PeakWindow("b", ANODIC, 0.3, 2.1)]
         out = pk.window_charges(self.res, parts)
