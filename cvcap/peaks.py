@@ -25,7 +25,7 @@ try:  # SciPy es opcional: sin él se usa una media móvil y no hay detección a
 except ImportError:  # pragma: no cover
     find_peaks = savgol_filter = None
 
-from .analysis import ANODIC, CATHODIC, AnalysisResult
+from .analysis import ANODIC, CATHODIC, AnalysisResult, _segment_charges
 
 PEAK_COLUMNS = ["cycle", "name", "kind", "e_peak", "i_peak", "edge"]
 
@@ -158,3 +158,52 @@ def peak_separation(peaks: pd.DataFrame, anodic_name: str, cathodic_name: str) -
     merged = a.merge(c, on="cycle", how="inner").sort_values("cycle")
     merged["dep"] = (merged["e_a"] - merged["e_c"]) * 1000
     return merged.reset_index(drop=True)
+
+
+REDOX_COLUMNS = ["cycle", "e_a", "e_c", "dep", "e_half", "i_a", "i_c", "ratio"]
+
+
+def redox_parameters(peaks: pd.DataFrame, anodic_name: str, cathodic_name: str) -> pd.DataFrame:
+    """Parámetros de un par redox por ciclo: ΔEp (mV), E½ = (Epa + Epc)/2 (V) y |ipa/ipc|.
+
+    Como en la «Calculadora CV». Los picos marcados «en el borde» (no son picos verdaderos) se ignoran.
+    Un ΔEp grande a velocidad baja indica cinética lenta o resistencia interfacial alta; |ipa/ipc| ≈ 1
+    indica un proceso reversible.
+    """
+    def pick(name, suffix):
+        sub = peaks[peaks["name"] == name]
+        if "edge" in sub:
+            sub = sub[~sub["edge"].astype(bool)]
+        return sub[["cycle", "e_peak", "i_peak"]].rename(columns={"e_peak": f"e_{suffix}", "i_peak": f"i_{suffix}"})
+
+    merged = pick(anodic_name, "a").merge(pick(cathodic_name, "c"), on="cycle", how="inner").sort_values("cycle")
+    merged["dep"] = (merged["e_a"] - merged["e_c"]) * 1000
+    merged["e_half"] = (merged["e_a"] + merged["e_c"]) / 2
+    merged["ratio"] = (merged["i_a"] / merged["i_c"]).abs()
+    return merged[REDOX_COLUMNS].reset_index(drop=True)
+
+
+CHARGE_COLUMNS = ["cycle", "name", "kind", "q_C", "mah", "mah_g", "pct"]
+
+
+def window_charges(result: AnalysisResult, windows: List[PeakWindow]) -> pd.DataFrame:
+    """Carga que pasa dentro de cada ventana de potencial, por ciclo y barrido.
+
+    ``pct`` es el porcentaje de la carga total (en valor absoluto) del barrido. Útil para repartir la
+    capacidad entre procesos (p. ej. SEI frente a litiación o los estadios del grafito).
+    """
+    cv = result.cv
+    rate = result.params.get("scan_rate_V_s")
+    rows = []
+    for cycle, kind, a, b in _segments_of(result):
+        sign = 1 if kind == ANODIC else -1
+        total = abs(_segment_charges(cv, a, b, sign, result.current_A, rate, None)[0])
+        for w in windows:
+            if w.kind != kind:
+                continue
+            q = abs(_segment_charges(cv, a, b, sign, result.current_A, rate, (w.e_min, w.e_max))[0])
+            row = {"cycle": cycle, "name": w.name, "kind": kind, "q_C": q, "mah": q / 3.6,
+                   "pct": q / total * 100 if total else np.nan}
+            row["mah_g"] = q / 3.6 / (result.mass_mg / 1000.0) if result.mass_mg else np.nan
+            rows.append(row)
+    return pd.DataFrame(rows, columns=CHARGE_COLUMNS)

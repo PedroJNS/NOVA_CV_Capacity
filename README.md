@@ -23,6 +23,10 @@ Aplicación web desarrollada en **Streamlit** y librería en **Python** para el 
 - 📊 **Exportación lista para OriginLab:** Excel con cabeceras Long Name / Units / Comments, además de Excel de resultados y CSV.
 - 📥 **Carga multiformato:** `.txt`, `.dat`, `.asc`, `.csv`, `.tsv`, `.xlsx`, `.xlsm` y `.xls`.
 - ✅ **Validada con datos reales:** la carga integrada coincide con las columnas Q+/Q− de NOVA (diferencia < 0,001 %).
+- ⚡ **Cinética multi-velocidad:** exponente *b* (i = a·vᵇ), ajuste a √v con coeficiente de difusión aparente (Randles–Ševčík) y separación capacitiva/difusiva de Dunn.
+- 🎯 **Referencia teórica:** % de la capacidad teórica y Li (e⁻) por fórmula (*x* en LiₓC₆), con corrección opcional por el blanco del aditivo conductor.
+- 🔁 **Parámetros redox y carga por ventana:** ΔEp, E½ y |ipa/ipc| por ciclo, y capacidad (mAh/g) repartida entre las ventanas de potencial.
+- 🔋 **Ciclado galvanostático:** corriente para un C-rate y tabla de ciclado (capacidad, EC, retención).
 - 🌐 **Bilingüe:** interfaz, tablas, avisos, gráficas y exportaciones en español e inglés.
 
 ---
@@ -57,6 +61,28 @@ Aplicación web desarrollada en **Streamlit** y librería en **Python** para el 
 - **Copia de seguridad:** descarga de la base de datos completa (`.sqlite`) y del catálogo (Excel), con restauración o importación.
 
 > ⚠️ **Persistencia:** en Streamlit Community Cloud el disco se borra cuando la app se reinicia o se vuelve a desplegar. Descarga la copia de seguridad con regularidad y restáurala cuando haga falta, o ejecuta la app en local (la base de datos queda en `data/cvcap.sqlite`, o en la ruta de la variable de entorno `CVCAP_DB_PATH`). Si la app es pública, todos los visitantes comparten la misma base de datos: **configúrala como privada**.
+
+---
+
+## 🧪 Cinética, referencia teórica y ciclado
+
+Estas funciones proceden de la «Calculadora CV» (Excel de PTCDA) y se han generalizado para cualquier material de intercalación.
+
+**Pestaña «Teórica y e⁻»** (por archivo). En la barra lateral, *Referencia teórica*, elige grafito (C₆ → LiC₆, 372 mAh/g), PTCDA u otro material (masa molar y electrones por fórmula). La tabla da, por ciclo, la capacidad corregida, *x* = Q / (F·n) y el % de la teórica. Si indicas la masa de aditivo conductor y la capacidad de un electrodo *blanco* (mAh/g de aditivo), se resta su aporte de las cargas antes de dividir por la masa activa.
+
+**Pestaña «Picos».** Además de ΔEp, se calculan E½ = (Epa + Epc)/2 y |ipa/ipc| por ciclo, y la **carga dentro de cada ventana** (C, mAh, mAh/g y % del barrido). Los picos en el borde de la ventana no se usan.
+
+**Sección «Cinética»** (aparece con ≥ 2 archivos). Sube CV del mismo electrodo a distintas velocidades; la velocidad de cada archivo se toma de los datos (columna de tiempo) y puedes corregirla en la tabla.
+
+| Análisis | Qué da | Interpretación |
+|---|---|---|
+| Exponente *b* | pendiente de log\|ip\| frente a log v, con R² | b < 0,65 difusivo · 0,65–0,85 mixto · b > 0,85 capacitivo |
+| Ajuste a √v | pendiente y R²; D aparente si das *n*, área y concentración | solo orden de magnitud (proceso reversible, 25 °C) |
+| Dunn | k₁ y k₂ de i = k₁·v + k₂·v½ a cada potencial y % capacitivo por velocidad | usa tres o más velocidades |
+
+**Sección «Ciclado galvanostático».** Corriente a programar para un C-rate (I = C-rate · Q_ref · m), C-rate real de una corriente dada y tabla de ciclado donde escribes la capacidad (mAh) o el tiempo (h) de cada semiciclo. Calcula mAh/g, eficiencia coulómbica (delitiación / litiación) y retención.
+
+En Python: `cvcap.electrochem` (teórica, C-rate, ciclado), `cvcap.kinetics` (b, √v, Dunn) y `cvcap.peaks.redox_parameters` / `window_charges`.
 
 ---
 
