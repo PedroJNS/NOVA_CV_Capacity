@@ -27,6 +27,8 @@ Aplicación web desarrollada en **Streamlit** y librería en **Python** para el 
 - 🎯 **Referencia teórica:** % de la capacidad teórica y Li (e⁻) por fórmula (*x* en LiₓC₆), con corrección opcional por el blanco del aditivo conductor.
 - 🔁 **Parámetros redox y carga por ventana:** ΔEp, E½ y |ipa/ipc| por ciclo, y capacidad (mAh/g) repartida entre las ventanas de potencial.
 - 🔋 **Ciclado galvanostático:** corriente para un C-rate y tabla de ciclado (capacidad, EC, retención).
+- ⚡ **Lectura de medidas galvanostáticas (CLI):** `--galvano` analiza exportaciones de NOVA «Chrono charge discharge galvanostatic» (pasos de litiación/delitiación, capacidad por paso, EC y retención por ciclo).
+- 🗂️ **Historial de análisis:** cada medida procesada por CLI se guarda en la base de datos y se consulta con `--historial`.
 - 🌐 **Bilingüe:** interfaz, tablas, avisos, gráficas y exportaciones en español e inglés.
 
 ---
@@ -83,6 +85,26 @@ Estas funciones proceden de la «Calculadora CV» (Excel de PTCDA) y se han gene
 **Sección «Ciclado galvanostático».** Corriente a programar para un C-rate (I = C-rate · Q_ref · m), C-rate real de una corriente dada y tabla de ciclado donde escribes la capacidad (mAh) o el tiempo (h) de cada semiciclo. Calcula mAh/g, eficiencia coulómbica (delitiación / litiación) y retención.
 
 En Python: `cvcap.electrochem` (teórica, C-rate, ciclado), `cvcap.kinetics` (b, √v, Dunn) y `cvcap.peaks.redox_parameters` / `window_charges`.
+
+### Medidas galvanostáticas (CC) desde la línea de comandos
+
+Exporta de NOVA la medida como ASCII (cabecera tipo `Time (s);WE(1).Potential (V);Corrected time (s);Index;WE(1).Current (A);…`). El análisis separa los pasos por el signo de la corriente (negativa = litiación, positiva = delitiación, con un umbral del 30 % de la corriente típica para ignorar el reposo), integra Q = ∫ I dt y calcula mAh/g con la masa activa:
+
+```bash
+python3 -m cvcap --galvano B4_6_chrono.txt --masa-activa 2.08
+```
+
+Devuelve una tabla de pasos (tipo, duración, I media, Q, mAh/g, E inicial y final) y una tabla de ciclos (cada delitiación con la litiación previa: capacidades, CE = Q<sub>delit</sub>/Q<sub>lit</sub>·100 y retención respecto al ciclo 1). Si el archivo incluye `WE(1).Charge (C)`, se usa esa carga acumulada de NOVA.
+
+### Historial
+
+Cada análisis que se ejecuta por línea de comandos (CV o galvanostático) se guarda en la misma base SQLite que las muestras (`data/cvcap.sqlite` o la ruta de `CVCAP_DB_PATH`), con su resumen y la tabla de ciclos. Para consultarlo:
+
+```bash
+python3 -m cvcap --historial
+```
+
+Para analizar sin registrar en el historial, añade `--sin-historial`. En Python: `cvcap.galvano` (`load_galvano`, `split_steps`, `cycles_table`, `analyze_galvano`) y `cvcap.history.History` (`log`, `list`, `cycles`, `delete`).
 
 ---
 
