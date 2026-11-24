@@ -663,3 +663,13 @@ class CvcapError(ValueError):
 
     def localized(self, lang: str = "es") -> str:
         return self.note.text(lang)
+
+
+# --------------------------------------------------------------------------
+# Galvanostático e historial
+# --------------------------------------------------------------------------
+_add("note.no_steps", "No se detectaron pasos de litiación o delitiación (¿corriente demasiado pequeña?).",
+     "No lithiation or delithiation steps detected (current too small?).")
+_add("err.nox_galvano", "El formato .nox es binario: exporta la medida desde NOVA como ASCII (.txt).",
+     "The .nox format is binary: export the measurement from NOVA as ASCII (.txt).")
+_add("hist.empty", "El historial está vacío.", "The history is empty.")

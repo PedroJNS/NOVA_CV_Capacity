@@ -5,6 +5,8 @@ Ejemplos::
     python -m cvcap datos_cv.txt --masa-activa 1.6
     python -m cvcap muestra1.txt muestra2.xlsx --masa-disco 6.2 --masa-cu 4.1 --salida resultados.xlsx
     python -m cvcap datos_cv.txt --masa-activa 2.64 --origin cv_origin.xlsx --idioma en
+    python -m cvcap carga_descarga.txt --galvano --masa-activa 2.08
+    python -m cvcap --historial
 """
 from __future__ import annotations
 
@@ -17,7 +19,9 @@ import pandas as pd
 
 from . import __version__
 from .analysis import active_mass_mg, analyze, disc_area_cm2
-from .i18n import CvcapError
+from .galvano import analyze_galvano, load_galvano
+from .history import History
+from .i18n import CvcapError, t
 from .peaks import default_windows, window_peaks
 from .io import read_nova
 from .report import item_from_result, origin_workbook, results_to_csv, results_to_excel, summary_table
@@ -28,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="cvcap",
         description="Capacidad, eficiencia coulómbica, retención y picos a partir de CV exportadas de NOVA.",
     )
-    p.add_argument("archivos", nargs="+", help="archivos .txt/.csv/.dat/.xlsx/.xls exportados de NOVA")
+    p.add_argument("archivos", nargs="*", help="archivos .txt/.csv/.dat/.xlsx/.xls exportados de NOVA")
     masa = p.add_argument_group("masa del electrodo")
     masa.add_argument("--masa-activa", type=float, help="masa activa en mg")
     masa.add_argument("--masa-disco", type=float, help="masa del disco (electrodo + Cu) en mg")
@@ -47,13 +51,61 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--origin", type=Path, help="guardar un Excel listo para OriginLab (.xlsx)")
     p.add_argument("--unidad-corriente", choices=["mA", "uA", "A", "A/g"], default="mA",
                    help="unidad de corriente en el Excel para Origin (def. mA)")
+    p.add_argument("--galvano", action="store_true",
+                   help="tratar los archivos como medidas galvanostáticas (carga/descarga) en vez de CV")
+    p.add_argument("--historial", action="store_true", help="mostrar las últimas medidas analizadas y salir")
+    p.add_argument("--sin-historial", action="store_true", help="no registrar este análisis en el historial")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
+
+
+def _show_history(lang: str) -> int:
+    hist = History()
+    table = hist.list(limit=100)
+    if table.empty:
+        print(t("hist.empty", lang))
+        return 0
+    pd.set_option("display.width", 220)
+    pd.set_option("display.max_columns", 30)
+    print(table.to_string(index=False))
+    return 0
+
+
+def _run_galvano(path: str, args, lang: str, hist: Optional[History]) -> Optional[int]:
+    """Analiza un archivo galvanostático. Devuelve None si hay error (para continuar con el siguiente)."""
+    if args.masa_activa is None:
+        print("[ERROR] --galvano necesita --masa-activa", file=sys.stderr)
+        return None
+    try:
+        data = load_galvano(path)
+        res = analyze_galvano(data, mass_mg=args.masa_activa, reference_cycle=args.ciclo_ref, name=Path(path).name)
+    except CvcapError as exc:
+        print(f"[ERROR] {path}: {exc.note.text(lang)}", file=sys.stderr)
+        return None
+    except OSError as exc:
+        print(f"[ERROR] {path}: {exc}", file=sys.stderr)
+        return None
+    print(f"\n=== {res.name} (galvanostático) ===")
+    for note in res.notes:
+        print(f"  · {note.text(lang)}")
+    print(res.steps.round(4).to_string(index=False))
+    if not res.cycles.empty:
+        print()
+        print(res.cycles.round(2).to_string(index=False))
+    if hist is not None:
+        hist.log(res.name, "GCD", res.mass_mg, res.summary(), res.cycles)
+    return 0
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     args = build_parser().parse_args(argv)
     lang = args.idioma
+    if args.historial:
+        return _show_history(lang)
+    if not args.archivos:
+        print("[ERROR] indica al menos un archivo (o --historial)", file=sys.stderr)
+        return 2
+    hist = None if args.sin_historial else History()
     if args.masa_activa is not None:
         mass = args.masa_activa
     elif args.masa_disco is not None and args.masa_cu is not None:
@@ -67,6 +119,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     results, items = [], []
     windows = default_windows(lang)
     for path in args.archivos:
+        if args.galvano:
+            _run_galvano(path, args, lang, hist)
+            continue
         try:
             cv = read_nova(path)
             res = analyze(
@@ -82,6 +137,9 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"[ERROR] {path}: {exc}", file=sys.stderr)
             continue
         peaks = window_peaks(res, windows)
+        if hist is not None:
+            hist.log(res.name, "CV", res.mass_mg, {k: (float(v) if hasattr(v, "__float__") else str(v))
+                                                     for k, v in res.summary.items()}, res.cycles)
         results.append(res)
         items.append(item_from_result(res, peaks=peaks))
         print(f"\n=== {res.name} ===")
@@ -97,7 +155,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(nova.round(5).to_string(index=False))
 
     if not results:
-        return 1
+        return 0 if args.galvano else 1
     if len(results) > 1:
         print()
         print(summary_table(results, lang).round(3).to_string(index=False))
